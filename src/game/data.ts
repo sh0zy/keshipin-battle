@@ -2,6 +2,13 @@
 
 export type PlayerId = 0 | 1
 export type Mode = '1p' | '2p'
+export type CpuLevel = 'easy' | 'normal' | 'hard'
+
+export const CPU_LEVEL_LABEL: Record<CpuLevel, string> = {
+  easy: 'よわい',
+  normal: 'ふつう',
+  hard: 'つよい',
+}
 
 export const BASE_STAT = 3
 export const STAT_MAX = 8

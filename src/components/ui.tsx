@@ -1,7 +1,8 @@
-// 共有UI: 手描きボタン / テープ / ステータスバー / 消しゴムSVG
-import type { ReactNode } from 'react'
+// 共有UI: 手描きボタン / テープ / ステータスバー / 消しゴムSVG / ミュート
+import { useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { BASE_STAT, STAT_MAX } from '../game/data'
+import { isMuted, setMuted, sfx } from '../game/sound'
 
 export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(' ')
@@ -33,7 +34,14 @@ export function SketchButton({
     <motion.button
       type="button"
       aria-label={ariaLabel}
-      onClick={onClick}
+      onClick={
+        onClick
+          ? () => {
+              sfx.click()
+              onClick()
+            }
+          : undefined
+      }
       disabled={disabled}
       whileHover={disabled ? undefined : { y: -2, rotate: -0.6 }}
       whileTap={disabled ? undefined : { scale: 0.96, y: 1 }}
@@ -47,6 +55,32 @@ export function SketchButton({
       )}
     >
       {children}
+    </motion.button>
+  )
+}
+
+/* ---------------- ミュートボタン ---------------- */
+export function MuteButton({ className }: { className?: string }) {
+  const [m, setM] = useState(isMuted())
+  return (
+    <motion.button
+      type="button"
+      aria-label={m ? '効果音をオンにする' : '効果音をオフにする'}
+      aria-pressed={m}
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.9 }}
+      onClick={() => {
+        const next = !m
+        setMuted(next)
+        setM(next)
+        if (!next) sfx.click()
+      }}
+      className={cx(
+        'sketch flex h-11 w-11 items-center justify-center bg-white text-xl shadow-sketch-sm transition-colors hover:bg-paper-deep',
+        className,
+      )}
+    >
+      <span aria-hidden="true">{m ? '🔇' : '🔊'}</span>
     </motion.button>
   )
 }

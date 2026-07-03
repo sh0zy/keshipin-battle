@@ -40,7 +40,7 @@ export default function StageScreen({
               className="sketch relative flex w-full items-center gap-4 bg-white p-4 text-left shadow-sketch transition-colors hover:bg-paper-deep"
             >
               <Tape
-                tone={(['yellow', 'blue', 'pink', 'yellow'] as const)[i]}
+                tone={(['yellow', 'blue', 'pink'] as const)[i % 3]}
                 className="-top-3 right-8 rotate-3 !w-14"
               />
               <StagePreview stage={s} />
@@ -97,6 +97,36 @@ function StagePreview({ stage }: { stage: Stage }) {
       {stage.holes.map((h, i) => (
         <circle key={i} cx={mx(h.x)} cy={my(h.y)} r={mw(h.r)} fill="#2b2350" stroke="#171233" strokeWidth="1.5" />
       ))}
+      {stage.spinner && (
+        <g>
+          <line
+            x1={mx(stage.spinner.x - stage.spinner.length)}
+            y1={my(stage.spinner.y)}
+            x2={mx(stage.spinner.x + stage.spinner.length)}
+            y2={my(stage.spinner.y)}
+            stroke="#a8b6c8"
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+          <circle cx={mx(stage.spinner.x)} cy={my(stage.spinner.y)} r="4" fill="#e2e8f0" stroke="#422006" strokeWidth="1.3" />
+        </g>
+      )}
+      {stage.tilt && (
+        <g>
+          <path
+            d={`M ${mx(DESK.x + DESK.w / 2) - 13} ${my(DESK.y + DESK.h / 2)} h 18`}
+            stroke="#7c4a21"
+            strokeWidth="3"
+            strokeDasharray="4 3"
+            opacity="0.7"
+          />
+          <path
+            d={`M ${mx(DESK.x + DESK.w / 2) + 5} ${my(DESK.y + DESK.h / 2) - 5} l 9 5 l -9 5 z`}
+            fill="#7c4a21"
+            opacity="0.7"
+          />
+        </g>
+      )}
       {[-140, 0, 140].map((o) => (
         <g key={o}>
           <circle cx={mx(DESK.x + DESK.w / 2 + o)} cy={my(DESK.y + 66)} r="4.5" fill="#e11d48" stroke="#422006" strokeWidth="1.2" />

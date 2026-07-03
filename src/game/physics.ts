@@ -1,13 +1,15 @@
 // Canvas 自前物理: 円ベースの押し合い / 摩擦 / 机のふち判定 / 壁・穴 / 特殊ギア効果
 import type { Build, PlayerId } from './data'
-import type { Stage, Wall } from './stages'
+import type { Spinner, Stage, Wall } from './stages'
 
 // 縦長ステージ (スマホ最適)
 export const WORLD = { w: 600, h: 880 }
 export const DESK = { x: 60, y: 70, w: 480, h: 740 }
 export const MAX_DRAG = 190
-const MAX_SPEED = 980
-const RESTITUTION = 0.82
+// 初撃で倒しきれないバランス: 遠距離はダメージ蓄積、近距離でフィニッシュ
+const MAX_SPEED = 670 // ギア込みのソフトキャップ (クリティカルは別枠で超える)
+const ROW_INSET = 150 // 初期配置のふちからの距離
+const RESTITUTION = 0.78
 const WALL_RESTITUTION = 0.75
 const STOP_SPEED = 9
 const FALL_DURATION = 0.55
@@ -63,7 +65,7 @@ export function createRoundPieces(builds: [Build, Build]): Piece[] {
   let id = 0
   for (const player of [0, 1] as PlayerId[]) {
     const b = builds[player]
-    const y = player === 0 ? DESK.y + DESK.h - 66 : DESK.y + 66
+    const y = player === 0 ? DESK.y + DESK.h - ROW_INSET : DESK.y + ROW_INSET
     for (let s = 0; s < 3; s++) {
       pieces.push({
         id: id++,
@@ -97,12 +99,14 @@ export function createRoundPieces(builds: [Build, Build]): Piece[] {
   return pieces
 }
 
-export function launchPiece(p: Piece, dx: number, dy: number, power01: number): boolean {
+export function launchPiece(p: Piece, dx: number, dy: number, power01: number, boost = 1): boolean {
   const len = Math.hypot(dx, dy) || 1
   const crit = Math.random() < p.critChance
-  const speed = (240 + 760 * clamp(power01, 0, 1)) * p.maxPowerMul * (crit ? 1.85 : 1)
-  p.vx = (dx / len) * Math.min(speed, MAX_SPEED * p.maxPowerMul * (crit ? 1.85 : 1))
-  p.vy = (dy / len) * Math.min(speed, MAX_SPEED * p.maxPowerMul * (crit ? 1.85 : 1))
+  const speed = (220 + 400 * clamp(power01, 0, 1)) * p.maxPowerMul * (crit ? 1.85 : 1)
+  // boost = まけんき補正 (ソフトキャップの外側に乗る)
+  const capped = Math.min(speed, MAX_SPEED * (crit ? 1.85 : 1)) * boost
+  p.vx = (dx / len) * capped
+  p.vy = (dy / len) * capped
   p.spin = (Math.random() - 0.5) * 6
   p.launched = 0
   return crit
@@ -237,6 +241,52 @@ function collideWall(p: Piece, w: Wall, events: SimEvent[]) {
   }
 }
 
+// 回転コンパスの針 (カプセル) との衝突: 針の回転速度ぶん はじかれる
+function collideSpinner(p: Piece, sp: Spinner, t: number, events: SimEvent[]) {
+  const ang = t * sp.speed
+  const ax = Math.cos(ang) * sp.length
+  const ay = Math.sin(ang) * sp.length
+  const x0 = sp.x - ax
+  const y0 = sp.y - ay
+  const x1 = sp.x + ax
+  const y1 = sp.y + ay
+  const ddx = x1 - x0
+  const ddy = y1 - y0
+  const len2 = ddx * ddx + ddy * ddy || 1
+  const u = clamp(((p.x - x0) * ddx + (p.y - y0) * ddy) / len2, 0, 1)
+  const cx2 = x0 + ddx * u
+  const cy2 = y0 + ddy * u
+  let nx = p.x - cx2
+  let ny = p.y - cy2
+  const dist = Math.hypot(nx, ny)
+  const R = p.radius + sp.radius
+  if (dist >= R) return
+  if (dist < 0.001) {
+    const l = Math.hypot(ddy, ddx) || 1
+    nx = ddy / l
+    ny = -ddx / l
+  } else {
+    nx /= dist
+    ny /= dist
+  }
+  p.x = cx2 + nx * R
+  p.y = cy2 + ny * R
+  // 針の接触点の速度 (回転による)
+  const rcx = cx2 - sp.x
+  const rcy = cy2 - sp.y
+  const vtx = -rcy * sp.speed
+  const vty = rcx * sp.speed
+  const rv = (p.vx - vtx) * nx + (p.vy - vty) * ny
+  if (rv < 0) {
+    p.vx -= (1 + 0.8) * rv * nx
+    p.vy -= (1 + 0.8) * rv * ny
+    p.spin += (Math.random() - 0.5) * 5
+    if (-rv > 60) {
+      events.push({ type: 'wall', x: cx2 + nx * sp.radius, y: cy2 + ny * sp.radius })
+    }
+  }
+}
+
 // インクの穴: ふんだら落ちる (テープでセーフ可)
 function holeCheck(p: Piece, stage: Stage, charges: Charges, events: SimEvent[]) {
   for (const h of stage.holes) {
@@ -263,11 +313,16 @@ function holeCheck(p: Piece, stage: Stage, charges: Charges, events: SimEvent[])
   }
 }
 
-function edgeCheck(p: Piece, charges: Charges, events: SimEvent[]) {
-  const overL = DESK.x - p.x
-  const overR = p.x - (DESK.x + DESK.w)
-  const overT = DESK.y - p.y
-  const overB = p.y - (DESK.y + DESK.h)
+function edgeCheck(p: Piece, charges: Charges, events: SimEvent[], stage: Stage, shrink: number) {
+  // サドンデス: 開いているふちだけ落下ラインが内側にせまる
+  const bx0 = DESK.x + (stage.openEdges.left ? shrink : 0)
+  const bx1 = DESK.x + DESK.w - (stage.openEdges.right ? shrink : 0)
+  const by0 = DESK.y + (stage.openEdges.top ? shrink : 0)
+  const by1 = DESK.y + DESK.h - (stage.openEdges.bottom ? shrink : 0)
+  const overL = bx0 - p.x
+  const overR = p.x - bx1
+  const overT = by0 - p.y
+  const overB = p.y - by1
   const over = Math.max(overL, overR, overT, overB)
   if (over <= -p.radius * 0.05) return
 
@@ -277,10 +332,10 @@ function edgeCheck(p: Piece, charges: Charges, events: SimEvent[]) {
     charges.protUsed[p.player] = true
     if (over === overL || over === overR) {
       p.vx = -p.vx * 0.72
-      p.x = over === overL ? DESK.x + 2 : DESK.x + DESK.w - 2
+      p.x = over === overL ? bx0 + 2 : bx1 - 2
     } else {
       p.vy = -p.vy * 0.72
-      p.y = over === overT ? DESK.y + 2 : DESK.y + DESK.h - 2
+      p.y = over === overT ? by0 + 2 : by1 - 2
     }
     events.push({ type: 'bounce', x: p.x, y: p.y })
     return
@@ -291,8 +346,8 @@ function edgeCheck(p: Piece, charges: Charges, events: SimEvent[]) {
   if (over > p.radius * 0.18 && p.hasTape && !charges.tapeUsed[p.player]) {
     charges.tapeUsed[p.player] = true
     const inset = p.radius * 0.55
-    p.x = clamp(p.x, DESK.x + inset - p.radius, DESK.x + DESK.w - inset + p.radius)
-    p.y = clamp(p.y, DESK.y + inset - p.radius, DESK.y + DESK.h - inset + p.radius)
+    p.x = clamp(p.x, bx0 + inset - p.radius, bx1 - inset + p.radius)
+    p.y = clamp(p.y, by0 + inset - p.radius, by1 - inset + p.radius)
     p.vx = 0
     p.vy = 0
     events.push({ type: 'tape', x: p.x, y: p.y, player: p.player })
@@ -312,6 +367,8 @@ export function stepSim(
   charges: Charges,
   events: SimEvent[],
   stage: Stage,
+  shrink = 0,
+  gimmickT = 0,
 ) {
   for (const p of pieces) {
     if (p.state === 'falling') {
@@ -325,6 +382,15 @@ export function stepSim(
     if (p.state !== 'alive') continue
     if (p.launched >= 0) p.launched += dt
     steerMagnet(p, pieces, dt)
+    // かたむいた机: うごいている駒だけ 流れにながされる
+    if (stage.tilt) {
+      const sp = Math.hypot(p.vx, p.vy)
+      if (sp > 25) {
+        const dir = (gimmickT / stage.tilt.period) * Math.PI * 2
+        p.vx += Math.cos(dir) * stage.tilt.accel * dt
+        p.vy += Math.sin(dir) * stage.tilt.accel * dt
+      }
+    }
     p.x += p.vx * dt
     p.y += p.vy * dt
     p.angle += p.spin * dt
@@ -339,8 +405,9 @@ export function stepSim(
   }
   for (const p of alive) {
     for (const w of stage.walls) collideWall(p, w, events)
+    if (p.state === 'alive' && stage.spinner) collideSpinner(p, stage.spinner, gimmickT, events)
     if (p.state === 'alive') holeCheck(p, stage, charges, events)
-    if (p.state === 'alive') edgeCheck(p, charges, events)
+    if (p.state === 'alive') edgeCheck(p, charges, events, stage, shrink)
   }
 }
 

@@ -8,11 +8,35 @@ import {
   computeBuild,
   gearById,
   playerLabel,
+  type CpuLevel,
   type Gear,
   type Mode,
   type PlayerId,
 } from '../game/data'
+import { sfx } from '../game/sound'
 import { EraserSVG, SketchButton, StatRow, Tape, cx } from '../components/ui'
+
+// つよいCPUはシナジーのある組み合わせから選ぶ
+const HARD_CPU_PAIRS: string[][] = [
+  ['scissors', 'stapler'],
+  ['magnet', 'scissors'],
+  ['compass', 'rubber'],
+  ['cover', 'stapler'],
+  ['magnet', 'rubber'],
+]
+
+function pickCpuGears(level: CpuLevel): string[] {
+  if (level === 'easy') {
+    return [GEARS[Math.floor(Math.random() * GEARS.length)].id]
+  }
+  if (level === 'hard') {
+    return [...HARD_CPU_PAIRS[Math.floor(Math.random() * HARD_CPU_PAIRS.length)]]
+  }
+  return [...GEARS]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 2)
+    .map((g) => g.id)
+}
 
 type Overlay =
   | { kind: 'swap' } // 2人モード: P2へ交代
@@ -21,11 +45,13 @@ type Overlay =
 
 export default function GearScreen({
   mode,
+  cpuLevel = 'normal',
   initial,
   onDone,
   onBack,
 }: {
   mode: Mode
+  cpuLevel?: CpuLevel
   initial: [string[], string[]]
   onDone: (loadouts: [string[], string[]]) => void
   onBack: () => void
@@ -48,6 +74,8 @@ export default function GearScreen({
   const name = playerLabel(mode, player)
 
   const toggle = (id: string) => {
+    if (sel.includes(id)) sfx.unequip()
+    else sfx.equip()
     setSel((cur) =>
       cur.includes(id)
         ? cur.filter((x) => x !== id)
@@ -60,8 +88,8 @@ export default function GearScreen({
   const confirm = () => {
     if (overlay) return
     if (mode === '1p') {
-      // CPUはランダムに2個装備
-      const pool = [...GEARS].sort(() => Math.random() - 0.5).slice(0, 2).map((g) => g.id)
+      // CPUの装備は強さで変わる
+      const pool = pickCpuGears(cpuLevel)
       setOverlay({ kind: 'cpu', gears: pool })
       later(() => onDone([sel, pool]), 1600)
     } else if (player === 0) {

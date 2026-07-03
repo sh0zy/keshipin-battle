@@ -1,7 +1,8 @@
 // リザルト画面: 勝者演出 + 紙吹雪
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { PLAYER_COLORS, gearById, playerLabel, type Mode, type PlayerId } from '../game/data'
+import { sfx } from '../game/sound'
 import { EraserSVG, SketchButton, Tape } from '../components/ui'
 
 export interface MatchResult {
@@ -28,6 +29,13 @@ export default function ResultScreen({
   onTitle: () => void
 }) {
   const reduced = useReducedMotion()
+  const playedRef = useRef(false)
+  useEffect(() => {
+    if (playedRef.current) return
+    playedRef.current = true
+    if (mode === '1p' && result.winner === 1) sfx.lose()
+    else sfx.win()
+  }, [mode, result.winner])
   const confetti = useMemo(
     () =>
       Array.from({ length: 42 }, (_, i) => ({

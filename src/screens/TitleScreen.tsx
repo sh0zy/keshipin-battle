@@ -1,7 +1,8 @@
-// タイトル画面: ロゴ + モード選択
-import { motion, useReducedMotion } from 'framer-motion'
-import type { Mode } from '../game/data'
-import { EraserSVG, Tape } from '../components/ui'
+// タイトル画面: ロゴ + モード選択 + CPUの強さ選択
+import { useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import type { CpuLevel, Mode } from '../game/data'
+import { EraserSVG, MuteButton, SketchButton, Tape } from '../components/ui'
 
 const FLOATERS = [
   { e: '✏️', x: '8%', y: '14%', d: 0 },
@@ -19,10 +20,22 @@ const LOGO_CHARS: { c: string; color: string }[] = [
   { c: 'ン', color: 'var(--color-ink)' },
 ]
 
-export default function TitleScreen({ onSelect }: { onSelect: (m: Mode) => void }) {
+const CPU_LEVELS: { level: CpuLevel; emoji: string; name: string; desc: string }[] = [
+  { level: 'easy', emoji: '🐣', name: 'よわい', desc: 'ねらいが てきとう。れんしゅうに!' },
+  { level: 'normal', emoji: '🙂', name: 'ふつう', desc: 'ちかくの敵を まっすぐねらう' },
+  { level: 'hard', emoji: '😈', name: 'つよい', desc: 'ふちへの押し出しを けいさんしてくる' },
+]
+
+export default function TitleScreen({
+  onSelect,
+}: {
+  onSelect: (m: Mode, cpu?: CpuLevel) => void
+}) {
   const reduced = useReducedMotion()
+  const [pickCpu, setPickCpu] = useState(false)
   return (
     <div className="bg-notebook relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-4 py-10">
+      <MuteButton className="absolute right-4 top-4" />
       {/* 浮かぶ文房具 */}
       {FLOATERS.map((f) => (
         <motion.span
@@ -73,28 +86,71 @@ export default function TitleScreen({ onSelect }: { onSelect: (m: Mode) => void 
         </motion.div>
       </motion.div>
 
-      {/* モード選択 */}
-      <motion.div
-        initial={{ y: 24, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.5, type: 'spring', stiffness: 220, damping: 20 }}
-        className="mt-12 flex w-full max-w-2xl flex-col gap-5 sm:flex-row"
-      >
-        <ModeCard
-          emoji="🤖"
-          title="ひとりで"
-          desc="CPUと しんけんしょうぶ"
-          tone="accent"
-          onClick={() => onSelect('1p')}
-        />
-        <ModeCard
-          emoji="🧑‍🤝‍🧑"
-          title="ふたりで"
-          desc="1つの がめんで こうたいバトル"
-          tone="pink"
-          onClick={() => onSelect('2p')}
-        />
-      </motion.div>
+      {/* モード選択 / CPUの強さ選択 */}
+      <div className="mt-12 w-full max-w-2xl">
+        <AnimatePresence mode="wait" initial={false}>
+          {!pickCpu ? (
+            <motion.div
+              key="modes"
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -18, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+              className="flex w-full flex-col gap-5 sm:flex-row"
+            >
+              <ModeCard
+                emoji="🤖"
+                title="ひとりで"
+                desc="CPUと しんけんしょうぶ"
+                tone="accent"
+                onClick={() => setPickCpu(true)}
+              />
+              <ModeCard
+                emoji="🧑‍🤝‍🧑"
+                title="ふたりで"
+                desc="1つの がめんで こうたいバトル"
+                tone="pink"
+                onClick={() => onSelect('2p')}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="cpu"
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -18, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+              className="flex w-full flex-col items-center gap-4"
+            >
+              <p className="font-display text-xl">
+                <span className="marker-swipe">CPUの つよさは?</span>
+              </p>
+              <div className="flex w-full flex-col gap-4 sm:flex-row">
+                {CPU_LEVELS.map((c, i) => (
+                  <motion.button
+                    key={c.level}
+                    type="button"
+                    onClick={() => onSelect('1p', c.level)}
+                    initial={{ y: 14, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.06 * i, type: 'spring', stiffness: 380, damping: 22 }}
+                    whileHover={{ y: -4, rotate: i === 1 ? 0 : i ? 1.2 : -1.2 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="sketch flex-1 bg-white px-5 py-5 text-left shadow-sketch transition-colors hover:bg-paper-deep"
+                  >
+                    <span className="text-3xl" aria-hidden="true">{c.emoji}</span>
+                    <span className="mt-1 block font-display text-2xl text-accent-deep">{c.name}</span>
+                    <span className="mt-1 block text-xs font-bold leading-snug text-ink-soft">{c.desc}</span>
+                  </motion.button>
+                ))}
+              </div>
+              <SketchButton variant="ghost" onClick={() => setPickCpu(false)} className="!min-h-11 text-base">
+                ← もどる
+              </SketchButton>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <p className="mt-10 text-sm font-medium text-ink-soft">
         ✏️ 3本しょうぶ ─ さきに2ラウンドとったら かち!
