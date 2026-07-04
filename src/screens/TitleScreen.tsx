@@ -112,6 +112,13 @@ export default function TitleScreen({
                 tone="pink"
                 onClick={() => onSelect('2p')}
               />
+              <ModeCard
+                emoji="🤼"
+                title="さんにんで"
+                desc="みつどもえの だいらんとう"
+                tone="green"
+                onClick={() => onSelect('3p')}
+              />
             </motion.div>
           ) : (
             <motion.div
@@ -169,26 +176,25 @@ function ModeCard({
   emoji: string
   title: string
   desc: string
-  tone: 'accent' | 'pink'
+  tone: 'accent' | 'pink' | 'green'
   onClick: () => void
 }) {
+  const color = { accent: 'var(--color-accent)', pink: 'var(--color-p2)', green: '#15803d' }[tone]
+  const tapeTone = ({ accent: 'blue', pink: 'pink', green: 'yellow' } as const)[tone]
   return (
     <motion.button
       type="button"
       onClick={onClick}
-      whileHover={{ y: -5, rotate: tone === 'accent' ? -1.2 : 1.2 }}
+      whileHover={{ y: -5, rotate: tone === 'pink' ? 1.2 : -1.2 }}
       whileTap={{ scale: 0.95 }}
       transition={{ type: 'spring', stiffness: 420, damping: 22 }}
-      className="sketch relative flex-1 bg-white px-6 py-6 text-left shadow-sketch transition-colors hover:bg-paper-deep"
+      className="sketch relative flex-1 bg-white px-5 py-5 text-left shadow-sketch transition-colors hover:bg-paper-deep sm:px-6 sm:py-6"
     >
-      <Tape tone={tone === 'accent' ? 'blue' : 'pink'} className="-top-3 right-6 rotate-6 !w-16" />
+      <Tape tone={tapeTone} className="-top-3 right-6 rotate-6 !w-16" />
       <span className="text-4xl" aria-hidden="true">
         {emoji}
       </span>
-      <span
-        className="mt-2 block font-display text-3xl"
-        style={{ color: tone === 'accent' ? 'var(--color-accent)' : 'var(--color-p2)' }}
-      >
+      <span className="mt-2 block font-display text-3xl" style={{ color }}>
         {title}
       </span>
       <span className="mt-1 block text-sm font-bold text-ink-soft">{desc}</span>

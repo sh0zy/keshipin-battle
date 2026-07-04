@@ -7,6 +7,7 @@ import {
   buildChips,
   computeBuild,
   gearById,
+  playerCount,
   playerLabel,
   type CpuLevel,
   type Gear,
@@ -39,7 +40,7 @@ function pickCpuGears(level: CpuLevel): string[] {
 }
 
 type Overlay =
-  | { kind: 'swap' } // 2人モード: P2へ交代
+  | { kind: 'swap'; next: PlayerId } // つぎのプレイヤーへ交代
   | { kind: 'cpu'; gears: string[] } // CPUの装備発表
   | null
 
@@ -52,15 +53,16 @@ export default function GearScreen({
 }: {
   mode: Mode
   cpuLevel?: CpuLevel
-  initial: [string[], string[]]
-  onDone: (loadouts: [string[], string[]]) => void
+  initial: string[][]
+  onDone: (loadouts: string[][]) => void
   onBack: () => void
 }) {
+  const count = playerCount(mode)
   const [player, setPlayer] = useState<PlayerId>(0)
-  const [sel, setSel] = useState<string[]>(initial[0])
+  const [sel, setSel] = useState<string[]>(initial[0] ?? [])
   const [detail, setDetail] = useState<Gear | null>(null)
   const [overlay, setOverlay] = useState<Overlay>(null)
-  const saved0 = useRef<string[]>(initial[0])
+  const saved = useRef<string[][]>([])
   const timers = useRef<number[]>([])
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
@@ -92,17 +94,18 @@ export default function GearScreen({
       const pool = pickCpuGears(cpuLevel)
       setOverlay({ kind: 'cpu', gears: pool })
       later(() => onDone([sel, pool]), 1600)
-    } else if (player === 0) {
-      saved0.current = sel
-      setOverlay({ kind: 'swap' })
+    } else if (player < count - 1) {
+      saved.current[player] = sel
+      const next = (player + 1) as PlayerId
+      setOverlay({ kind: 'swap', next })
       later(() => {
-        setPlayer(1)
-        setSel(initial[1])
+        setPlayer(next)
+        setSel(initial[next] ?? [])
         setDetail(null)
         setOverlay(null)
       }, 1100)
     } else {
-      onDone([saved0.current, sel])
+      onDone([...saved.current.slice(0, count - 1), sel])
     }
   }
 
@@ -131,7 +134,7 @@ export default function GearScreen({
         {/* プレビューパネル */}
         <aside className="lg:w-80 lg:shrink-0">
           <div className="sketch relative bg-white p-4 shadow-sketch lg:sticky lg:top-4">
-            <Tape className="-top-3 left-1/2 -translate-x-1/2 -rotate-2 !w-20" tone={player === 0 ? 'blue' : 'pink'} />
+            <Tape className="-top-3 left-1/2 -translate-x-1/2 -rotate-2 !w-20" tone={(['blue', 'pink', 'yellow'] as const)[player]} />
             <motion.div
               key={sel.join(',')}
               animate={{ rotate: [0, -2.5, 2, 0] }}
@@ -225,7 +228,9 @@ export default function GearScreen({
             </div>
 
             <SketchButton variant="primary" onClick={confirm} className="mt-4 w-full text-xl">
-              {mode === '2p' && player === 0 ? 'つぎは プレイヤー2 →' : 'バトルへ ▶'}
+              {mode !== '1p' && player < count - 1
+                ? `つぎは ${playerLabel(mode, (player + 1) as PlayerId)} →`
+                : 'バトルへ ▶'}
             </SketchButton>
             <p className="mt-2 text-center text-xs font-bold text-ink-soft">
               ギアは 0〜2こ でOK({sel.length}/2)
@@ -307,8 +312,8 @@ export default function GearScreen({
               {overlay.kind === 'swap' ? (
                 <>
                   <p className="text-4xl" aria-hidden="true">🔄</p>
-                  <p className="mt-2 font-display text-3xl" style={{ color: PLAYER_COLORS[1] }}>
-                    プレイヤー2のばん!
+                  <p className="mt-2 font-display text-3xl" style={{ color: PLAYER_COLORS[overlay.next] }}>
+                    {playerLabel(mode, overlay.next)}のばん!
                   </p>
                   <p className="mt-1 text-sm font-bold text-ink-soft">たんまつを わたしてね</p>
                 </>

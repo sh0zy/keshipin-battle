@@ -7,8 +7,8 @@ import { EraserSVG, SketchButton, Tape } from '../components/ui'
 
 export interface MatchResult {
   winner: PlayerId
-  score: [number, number]
-  loadouts: [string[], string[]]
+  score: number[]
+  loadouts: string[][]
 }
 
 const CONFETTI_COLORS = ['#f97316', '#2563eb', '#e11d48', '#facc15', '#22c55e']
@@ -89,7 +89,7 @@ export default function ResultScreen({
         transition={{ type: 'spring', stiffness: 260, damping: 18 }}
         className="sketch relative w-full max-w-md bg-white px-6 pb-8 pt-12 text-center shadow-sketch"
       >
-        <Tape className="-top-3 left-8 -rotate-6" tone={result.winner === 0 ? 'blue' : 'pink'} />
+        <Tape className="-top-3 left-8 -rotate-6" tone={(['blue', 'pink', 'yellow'] as const)[result.winner]} />
         <Tape className="-top-3 right-8 rotate-6" />
         <p className="font-display text-lg tracking-[0.3em] text-ink-soft">けっかはっぴょう</p>
 
@@ -118,7 +118,12 @@ export default function ResultScreen({
         </motion.h2>
 
         <p className="mt-3 font-num text-3xl font-bold tracking-widest text-ink">
-          {result.score[0]} <span className="text-ink-soft">-</span> {result.score[1]}
+          {result.score.map((s, i) => (
+            <span key={i}>
+              {i > 0 && <span className="text-ink-soft"> - </span>}
+              <span style={{ color: PLAYER_COLORS[i] }}>{s}</span>
+            </span>
+          ))}
         </p>
         <p className="mt-1 text-sm font-bold text-ink-soft">
           {playerLost ? 'そうびをかえて リベンジだ!' : 'すばらしい はじきっぷり!'}

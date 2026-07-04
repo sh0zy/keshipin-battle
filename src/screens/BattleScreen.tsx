@@ -40,7 +40,7 @@ interface TextPop { x: number; y: number; text: string; life: number; max: numbe
 
 interface Sim {
   pieces: Piece[]
-  builds: [Build, Build]
+  builds: Build[]
   charges: Charges
   particles: Particle[]
   pops: TextPop[]
@@ -50,7 +50,7 @@ interface Sim {
   turn: PlayerId
   round: number
   starter: PlayerId
-  scores: [number, number]
+  scores: number[]
   timer: number
   simTime: number
   time: number
@@ -69,8 +69,8 @@ interface Hud {
   phase: Phase
   turn: PlayerId
   round: number
-  scores: [number, number]
-  alive: [number, number]
+  scores: number[]
+  alive: number[]
   shrinking: boolean
   teacher: TeacherState
 }
@@ -110,29 +110,32 @@ interface EmoteMsg {
 }
 
 /* ---------------- 木目テクスチャ (1回だけ生成してキャッシュ) ---------------- */
+// 800 = 大型丸テーブル(直径800)にも足りるサイズ
+const WOOD_W = 800
+const WOOD_H = 800
 let woodCache: HTMLCanvasElement | null = null
 function getWood(): HTMLCanvasElement {
   if (woodCache) return woodCache
   const c = document.createElement('canvas')
-  c.width = DESK.w
-  c.height = DESK.h
+  c.width = WOOD_W
+  c.height = WOOD_H
   const g = c.getContext('2d')!
   const rows = 8
-  const ph = DESK.h / rows
+  const ph = WOOD_H / rows
   const lights = [61, 57, 60, 63, 56, 59, 62, 58]
   for (let r = 0; r < rows; r++) {
     g.fillStyle = `hsl(31 45% ${lights[r]}%)`
-    g.fillRect(0, r * ph, DESK.w, ph)
+    g.fillRect(0, r * ph, WOOD_W, ph)
     const grad = g.createLinearGradient(0, r * ph, 0, r * ph + ph)
     grad.addColorStop(0, 'rgba(255,240,220,0.14)')
     grad.addColorStop(1, 'rgba(90,50,20,0.10)')
     g.fillStyle = grad
-    g.fillRect(0, r * ph, DESK.w, ph)
+    g.fillRect(0, r * ph, WOOD_W, ph)
     for (let i = 0; i < 8; i++) {
       const y0 = r * ph + rand(4, ph - 4)
       g.beginPath()
       g.moveTo(0, y0)
-      for (let x = 0; x <= DESK.w; x += 55) {
+      for (let x = 0; x <= WOOD_W; x += 55) {
         g.quadraticCurveTo(x + 27, y0 + rand(-4, 4), x + 55, y0 + rand(-2.5, 2.5))
       }
       g.strokeStyle = `rgba(120,66,28,${rand(0.07, 0.16)})`
@@ -140,7 +143,7 @@ function getWood(): HTMLCanvasElement {
       g.stroke()
     }
     for (let i = 0; i < 2; i++) {
-      const kx = rand(30, DESK.w - 30)
+      const kx = rand(30, WOOD_W - 30)
       const ky = r * ph + rand(10, ph - 10)
       const kr = rand(5, 10)
       const rg = g.createRadialGradient(kx, ky, 1, kx, ky, kr)
@@ -152,7 +155,7 @@ function getWood(): HTMLCanvasElement {
       g.fill()
     }
     g.fillStyle = 'rgba(88,48,18,0.32)'
-    g.fillRect(0, r * ph - 1, DESK.w, 2)
+    g.fillRect(0, r * ph - 1, WOOD_W, 2)
   }
   woodCache = c
   return c
@@ -262,7 +265,8 @@ function drawCaseWall(g: CanvasRenderingContext2D, w: Wall) {
   g.strokeStyle = '#422006'
   g.lineWidth = 1.5
   g.stroke()
-  roundRectPath(g, w.x + 12, w.y + w.h - 28, 52, 16, 4)
+  const tagW = Math.min(52, w.w - 24)
+  roundRectPath(g, w.x + 12, w.y + w.h - 28, tagW, 16, 4)
   g.fillStyle = '#fff7ed'
   g.fill()
   g.strokeStyle = '#422006'
@@ -271,8 +275,8 @@ function drawCaseWall(g: CanvasRenderingContext2D, w: Wall) {
   g.strokeStyle = 'rgba(66,32,6,0.35)'
   g.lineWidth = 1.5
   g.beginPath()
-  g.moveTo(w.x + 18, w.y + w.h - 20)
-  g.lineTo(w.x + 56, w.y + w.h - 20)
+  g.moveTo(w.x + 16, w.y + w.h - 20)
+  g.lineTo(w.x + 8 + tagW, w.y + w.h - 20)
   g.stroke()
 }
 
@@ -403,63 +407,142 @@ function drawTiltArrow(g: CanvasRenderingContext2D, stage: Stage, t: number) {
   g.restore()
 }
 
-function drawTable(g: CanvasRenderingContext2D, stage: Stage, shrink: number, gimmickT: number) {
-  // ノートの紙 + 罫線
-  g.fillStyle = '#fff7ed'
-  g.fillRect(0, 0, WORLD.w, WORLD.h)
-  g.fillStyle = 'rgba(37,99,235,0.08)'
-  for (let y = 34; y < WORLD.h; y += 34) g.fillRect(0, y, WORLD.w, 2)
-  g.fillStyle = 'rgba(225,29,72,0.16)'
-  g.fillRect(30, 0, 2, WORLD.h)
-  // 机の影
+// 丸テーブルの描画
+function drawRoundDesk(
+  g: CanvasRenderingContext2D,
+  round: { x: number; y: number; r: number },
+  shrink: number,
+  worldW: number,
+) {
+  const { x, y, r } = round
+  // 影
   g.fillStyle = 'rgba(66,32,6,0.15)'
-  roundRectPath(g, DESK.x + 9, DESK.y + 13, DESK.w, DESK.h, 20)
+  g.beginPath()
+  g.arc(x + 9, y + 13, r, 0, Math.PI * 2)
   g.fill()
   // 木目
   g.save()
-  roundRectPath(g, DESK.x, DESK.y, DESK.w, DESK.h, 18)
+  g.beginPath()
+  g.arc(x, y, r, 0, Math.PI * 2)
   g.clip()
-  g.drawImage(getWood(), DESK.x, DESK.y)
+  g.drawImage(getWood(), x - r, y - r)
   g.strokeStyle = 'rgba(60,30,8,0.22)'
   g.lineWidth = 16
-  roundRectPath(g, DESK.x, DESK.y, DESK.w, DESK.h, 18)
+  g.beginPath()
+  g.arc(x, y, r, 0, Math.PI * 2)
   g.stroke()
-  // サドンデスの危険ゾーン
+  // サドンデスの危険ゾーン (外周リング)
   if (shrink > 0) {
-    const zones: [number, number, number, number][] = []
-    if (stage.openEdges.left) zones.push([DESK.x, DESK.y, shrink, DESK.h])
-    if (stage.openEdges.right) zones.push([DESK.x + DESK.w - shrink, DESK.y, shrink, DESK.h])
-    if (stage.openEdges.top) zones.push([DESK.x, DESK.y, DESK.w, shrink])
-    if (stage.openEdges.bottom) zones.push([DESK.x, DESK.y + DESK.h - shrink, DESK.w, shrink])
+    const inner = Math.max(r - shrink, 1)
+    g.beginPath()
+    g.arc(x, y, r, 0, Math.PI * 2)
+    g.arc(x, y, inner, 0, Math.PI * 2, true)
     g.fillStyle = 'rgba(225,29,72,0.12)'
-    for (const [x, y, w, h] of zones) g.fillRect(x, y, w, h)
+    g.fill()
     const pat = getStripes(g)
     if (pat) {
       g.fillStyle = pat
-      for (const [x, y, w, h] of zones) g.fillRect(x, y, w, h)
+      g.beginPath()
+      g.arc(x, y, r, 0, Math.PI * 2)
+      g.arc(x, y, inner, 0, Math.PI * 2, true)
+      g.fill()
     }
   }
   g.restore()
-  // 机のふち
+  // ふち
   g.strokeStyle = '#7c4a21'
   g.lineWidth = 7
-  roundRectPath(g, DESK.x, DESK.y, DESK.w, DESK.h, 18)
+  g.beginPath()
+  g.arc(x, y, r, 0, Math.PI * 2)
   g.stroke()
-  // 落下警告の点線 (開いているふちは縮んだラインに追従)
-  const iL = DESK.x + (stage.openEdges.left ? Math.max(24, shrink) : 24)
-  const iR = DESK.x + DESK.w - (stage.openEdges.right ? Math.max(24, shrink) : 24)
-  const iT = DESK.y + (stage.openEdges.top ? Math.max(24, shrink) : 24)
-  const iB = DESK.y + DESK.h - (stage.openEdges.bottom ? Math.max(24, shrink) : 24)
+  // 落下警告の点線 (縮んだラインに追従)
   g.strokeStyle = shrink > 0 ? 'rgba(220,38,38,0.45)' : 'rgba(66,32,6,0.22)'
   g.lineWidth = 2.5
   g.setLineDash([12, 10])
   g.beginPath()
-  if (stage.openEdges.top) { g.moveTo(iL, iT); g.lineTo(iR, iT) }
-  if (stage.openEdges.bottom) { g.moveTo(iL, iB); g.lineTo(iR, iB) }
-  if (stage.openEdges.left) { g.moveTo(iL, iT); g.lineTo(iL, iB) }
-  if (stage.openEdges.right) { g.moveTo(iR, iT); g.lineTo(iR, iB) }
+  g.arc(x, y, Math.max(r - Math.max(24, shrink), 10), 0, Math.PI * 2)
   g.stroke()
   g.setLineDash([])
+  // あいた紙スペースのらくがき
+  g.strokeStyle = 'rgba(66,32,6,0.10)'
+  g.lineWidth = 2
+  g.beginPath()
+  g.arc(70, 110, 16, 0.3, Math.PI * 1.7)
+  g.arc(98, 118, 10, Math.PI, Math.PI * 2.6)
+  g.stroke()
+  g.beginPath()
+  g.arc(worldW - 80, 120, 14, 1.2, Math.PI * 2.5)
+  g.stroke()
+}
+
+function drawTable(
+  g: CanvasRenderingContext2D,
+  stage: Stage,
+  shrink: number,
+  gimmickT: number,
+  worldW = WORLD.w,
+  worldH = WORLD.h,
+) {
+  // ノートの紙 + 罫線
+  g.fillStyle = '#fff7ed'
+  g.fillRect(0, 0, worldW, worldH)
+  g.fillStyle = 'rgba(37,99,235,0.08)'
+  for (let y = 34; y < worldH; y += 34) g.fillRect(0, y, worldW, 2)
+  g.fillStyle = 'rgba(225,29,72,0.16)'
+  g.fillRect(30, 0, 2, worldH)
+  if (stage.round) {
+    drawRoundDesk(g, stage.round, shrink, worldW)
+  } else {
+    // 机の影
+    g.fillStyle = 'rgba(66,32,6,0.15)'
+    roundRectPath(g, DESK.x + 9, DESK.y + 13, DESK.w, DESK.h, 20)
+    g.fill()
+    // 木目
+    g.save()
+    roundRectPath(g, DESK.x, DESK.y, DESK.w, DESK.h, 18)
+    g.clip()
+    g.drawImage(getWood(), DESK.x, DESK.y)
+    g.strokeStyle = 'rgba(60,30,8,0.22)'
+    g.lineWidth = 16
+    roundRectPath(g, DESK.x, DESK.y, DESK.w, DESK.h, 18)
+    g.stroke()
+    // サドンデスの危険ゾーン
+    if (shrink > 0) {
+      const zones: [number, number, number, number][] = []
+      if (stage.openEdges.left) zones.push([DESK.x, DESK.y, shrink, DESK.h])
+      if (stage.openEdges.right) zones.push([DESK.x + DESK.w - shrink, DESK.y, shrink, DESK.h])
+      if (stage.openEdges.top) zones.push([DESK.x, DESK.y, DESK.w, shrink])
+      if (stage.openEdges.bottom) zones.push([DESK.x, DESK.y + DESK.h - shrink, DESK.w, shrink])
+      g.fillStyle = 'rgba(225,29,72,0.12)'
+      for (const [x, y, w, h] of zones) g.fillRect(x, y, w, h)
+      const pat = getStripes(g)
+      if (pat) {
+        g.fillStyle = pat
+        for (const [x, y, w, h] of zones) g.fillRect(x, y, w, h)
+      }
+    }
+    g.restore()
+    // 机のふち
+    g.strokeStyle = '#7c4a21'
+    g.lineWidth = 7
+    roundRectPath(g, DESK.x, DESK.y, DESK.w, DESK.h, 18)
+    g.stroke()
+    // 落下警告の点線 (開いているふちは縮んだラインに追従)
+    const iL = DESK.x + (stage.openEdges.left ? Math.max(24, shrink) : 24)
+    const iR = DESK.x + DESK.w - (stage.openEdges.right ? Math.max(24, shrink) : 24)
+    const iT = DESK.y + (stage.openEdges.top ? Math.max(24, shrink) : 24)
+    const iB = DESK.y + DESK.h - (stage.openEdges.bottom ? Math.max(24, shrink) : 24)
+    g.strokeStyle = shrink > 0 ? 'rgba(220,38,38,0.45)' : 'rgba(66,32,6,0.22)'
+    g.lineWidth = 2.5
+    g.setLineDash([12, 10])
+    g.beginPath()
+    if (stage.openEdges.top) { g.moveTo(iL, iT); g.lineTo(iR, iT) }
+    if (stage.openEdges.bottom) { g.moveTo(iL, iB); g.lineTo(iR, iB) }
+    if (stage.openEdges.left) { g.moveTo(iL, iT); g.lineTo(iL, iB) }
+    if (stage.openEdges.right) { g.moveTo(iR, iT); g.lineTo(iR, iB) }
+    g.stroke()
+    g.setLineDash([])
+  }
   // ステージギミック
   drawTiltArrow(g, stage, gimmickT)
   for (const h of stage.holes) drawHole(g, h.x, h.y, h.r)
@@ -628,11 +711,11 @@ function drawAim(g: CanvasRenderingContext2D, p: Piece, px: number, py: number, 
 }
 
 // 先生 (監視中に上からのぞきこむ / 目線は現在の駒を追う)
-function drawTeacher(g: CanvasRenderingContext2D, t: number, lookX: number, lookY: number) {
+function drawTeacher(g: CanvasRenderingContext2D, t: number, lookX: number, lookY: number, deskTop = DESK.y, worldW = WORLD.w) {
   const slide = Math.min(t / 0.35, 1)
   const ease = 1 - (1 - slide) * (1 - slide)
-  const hx = WORLD.w / 2
-  const hy = -66 + 100 * ease
+  const hx = worldW / 2
+  const hy = deskTop - 136 + 100 * ease
   // 手 (机のふちを つかむ)
   if (ease > 0.85) {
     g.fillStyle = '#f8d3ac'
@@ -640,7 +723,7 @@ function drawTeacher(g: CanvasRenderingContext2D, t: number, lookX: number, look
     g.lineWidth = 2.2
     for (const ox of [-34, 34]) {
       g.beginPath()
-      g.ellipse(hx + ox, 64, 10, 7, 0, 0, Math.PI * 2)
+      g.ellipse(hx + ox, deskTop - 6, 10, 7, 0, 0, Math.PI * 2)
       g.fill()
       g.stroke()
     }
@@ -706,10 +789,11 @@ export default function BattleScreen({
   mode: Mode
   cpuLevel?: CpuLevel
   stage: Stage
-  loadouts: [string[], string[]]
-  onFinish: (winner: PlayerId, score: [number, number]) => void
+  loadouts: string[][]
+  onFinish: (winner: PlayerId, score: number[]) => void
   onExit: () => void
 }) {
+  const nPlayers = loadouts.length
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const simRef = useRef<Sim | null>(null)
   const onFinishRef = useRef(onFinish)
@@ -717,9 +801,17 @@ export default function BattleScreen({
   const stageRef = useRef(stage)
   stageRef.current = stage
 
-  const [hud, setHud] = useState<Hud>({ phase: 'intro', turn: 0, round: 1, scores: [0, 0], alive: [3, 3], shrinking: false, teacher: 'none' })
+  const [hud, setHud] = useState<Hud>(() => ({
+    phase: 'intro',
+    turn: 0,
+    round: 1,
+    scores: loadouts.map(() => 0),
+    alive: loadouts.map(() => 3),
+    shrinking: false,
+    teacher: 'none',
+  }))
   const [announce, setAnnounce] = useState<Announce | null>(null)
-  const [emotes, setEmotes] = useState<Record<PlayerId, EmoteMsg | null>>({ 0: null, 1: null })
+  const [emotes, setEmotes] = useState<Record<PlayerId, EmoteMsg | null>>({ 0: null, 1: null, 2: null })
   const emoteSeq = useRef(0)
   const sendEmote = (player: PlayerId, e: Emote) => {
     sfx.emote()
@@ -742,15 +834,19 @@ export default function BattleScreen({
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const builds: [Build, Build] = [computeBuild(loadouts[0]), computeBuild(loadouts[1])]
+    const builds: Build[] = loadouts.map((l) => computeBuild(l))
     const st = stageRef.current
+    const wld = st.world ?? WORLD
     let announceId = 0
     let lastHitSfx = 0
 
     const sim: Sim = {
-      pieces: createRoundPieces(builds),
+      pieces: createRoundPieces(builds, nPlayers, st),
       builds,
-      charges: { tapeUsed: [false, false], protUsed: [false, false] },
+      charges: {
+        tapeUsed: Array(nPlayers).fill(false),
+        protUsed: Array(nPlayers).fill(false),
+      },
       particles: [],
       pops: [],
       shake: 0,
@@ -759,7 +855,7 @@ export default function BattleScreen({
       turn: 0,
       round: 1,
       starter: 0,
-      scores: [0, 0],
+      scores: loadouts.map(() => 0),
       timer: 1.3,
       simTime: 0,
       time: 0,
@@ -786,8 +882,8 @@ export default function BattleScreen({
         phase: sim.phase,
         turn: sim.turn,
         round: sim.round,
-        scores: [...sim.scores] as [number, number],
-        alive: [aliveCount(sim.pieces, 0), aliveCount(sim.pieces, 1)],
+        scores: [...sim.scores],
+        alive: builds.map((_, i) => aliveCount(sim.pieces, i as PlayerId)),
         shrinking: sim.shrink > 0,
         teacher: sim.teacher,
       })
@@ -819,7 +915,7 @@ export default function BattleScreen({
     const resize = () => {
       const cw = canvas.clientWidth
       canvas.width = Math.round(cw * dpr)
-      canvas.height = Math.round(cw * (WORLD.h / WORLD.w) * dpr)
+      canvas.height = Math.round(cw * (wld.h / wld.w) * dpr)
     }
     resize()
     const ro = new ResizeObserver(resize)
@@ -829,8 +925,8 @@ export default function BattleScreen({
     const toWorld = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
       return {
-        x: ((e.clientX - rect.left) / rect.width) * WORLD.w,
-        y: ((e.clientY - rect.top) / rect.height) * WORLD.h,
+        x: ((e.clientX - rect.left) / rect.width) * wld.w,
+        y: ((e.clientY - rect.top) / rect.height) * wld.h,
       }
     }
     const humanCanAct = () => sim.phase === 'aim' && !isCpuTurn()
@@ -995,7 +1091,10 @@ export default function BattleScreen({
       playBgm('danger')
       if (!reduced) sim.shake = Math.min(sim.shake + 4, 9)
       if (first) say('サドンデス!', 'つくえが ちぢんでいく…!', '#dc2626')
-      else pop(DESK.x + DESK.w / 2, DESK.y + sim.shrink + 26, 'まだ ちぢむ!', '#dc2626', 18)
+      else {
+        const topY = st.round ? st.round.y - st.round.r : DESK.y
+        pop(st.round ? st.round.x : DESK.x + DESK.w / 2, topY + sim.shrink + 26, 'まだ ちぢむ!', '#dc2626', 18)
+      }
       sync()
       return true
     }
@@ -1003,10 +1102,11 @@ export default function BattleScreen({
     /* ---- ラウンド進行 ---- */
     const startRound = () => {
       sim.round += 1
-      sim.starter = (1 - sim.starter) as PlayerId
+      sim.starter = ((sim.starter + 1) % nPlayers) as PlayerId
       sim.turn = sim.starter
-      sim.pieces = createRoundPieces(builds)
-      sim.charges.protUsed = [false, false]
+      // 席ローテーション: ラウンドごとに じんちを交代
+      sim.pieces = createRoundPieces(builds, nPlayers, st, (sim.round - 1) % nPlayers)
+      sim.charges.protUsed = Array(nPlayers).fill(false)
       sim.particles = []
       sim.pops = []
       sim.phase = 'intro'
@@ -1022,11 +1122,12 @@ export default function BattleScreen({
     }
 
     const resolve = () => {
-      const a0 = aliveCount(sim.pieces, 0)
-      const a1 = aliveCount(sim.pieces, 1)
-      if (a0 === 0 || a1 === 0) {
-        const winner: PlayerId =
-          a0 === 0 && a1 === 0 ? ((1 - sim.turn) as PlayerId) : a0 === 0 ? 1 : 0
+      const counts = builds.map((_, i) => aliveCount(sim.pieces, i as PlayerId))
+      const survivors = counts.filter((c) => c > 0).length
+      if (survivors <= 1) {
+        // 生き残りがラウンド勝者 (全滅なら次番のプレイヤー)
+        const found = counts.findIndex((c) => c > 0)
+        const winner = (found >= 0 ? found : (sim.turn + 1) % nPlayers) as PlayerId
         sim.scores[winner] += 1
         sfx.round()
         if (mode === '1p') {
@@ -1035,14 +1136,17 @@ export default function BattleScreen({
         if (sim.scores[winner] >= 2) {
           sim.phase = 'matchEnd'
           sim.timer = 1.6
-          say(`${label(winner)}の かち!!`, `${sim.scores[0]} - ${sim.scores[1]}`, PLAYER_COLORS[winner])
+          say(`${label(winner)}の かち!!`, sim.scores.join(' - '), PLAYER_COLORS[winner])
         } else {
           sim.phase = 'roundEnd'
           sim.timer = 1.9
           say(`${label(winner)}が ラウンドゲット!`, 'つぎのラウンドへ…', PLAYER_COLORS[winner])
         }
       } else {
-        sim.turn = (1 - sim.turn) as PlayerId
+        // つぎの生きているプレイヤーへ (全滅プレイヤーはスキップ)
+        do {
+          sim.turn = ((sim.turn + 1) % nPlayers) as PlayerId
+        } while (counts[sim.turn] === 0)
         sim.phase = 'aim'
         sim.cpu = null
         updateTeacher()
@@ -1069,6 +1173,17 @@ export default function BattleScreen({
     }
     // その方向に飛ばしたとき、開いたふちまでの距離 (短い = 落としやすい)
     const openEdgeDistAlong = (x: number, y: number, dx: number, dy: number) => {
+      if (st.round) {
+        // 円のふちまでの距離 (レイと円の交点)
+        const R = st.round.r - sim.shrink
+        const px2 = x - st.round.x
+        const py2 = y - st.round.y
+        const b = px2 * dx + py2 * dy
+        const c2 = px2 * px2 + py2 * py2 - R * R
+        const disc = b * b - c2
+        if (disc <= 0) return 0
+        return -b + Math.sqrt(disc)
+      }
       const bx0 = DESK.x + (st.openEdges.left ? sim.shrink : 0)
       const bx1 = DESK.x + DESK.w - (st.openEdges.right ? sim.shrink : 0)
       const by0 = DESK.y + (st.openEdges.top ? sim.shrink : 0)
@@ -1210,24 +1325,31 @@ export default function BattleScreen({
         sim.timer -= dt
         if (sim.timer <= 0 && !sim.finished) {
           sim.finished = true
-          const winner: PlayerId = sim.scores[0] >= 2 ? 0 : 1
-          onFinishRef.current(winner, [...sim.scores] as [number, number])
+          const wi = sim.scores.findIndex((s) => s >= 2)
+          onFinishRef.current((wi >= 0 ? wi : 0) as PlayerId, [...sim.scores])
         }
       }
     }
 
     /* ---- 描画 ---- */
     const draw = () => {
-      const s = canvas.width / WORLD.w
+      const s = canvas.width / wld.w
       const sx = sim.shake > 0.2 ? (Math.random() - 0.5) * 2 * sim.shake : 0
       const sy = sim.shake > 0.2 ? (Math.random() - 0.5) * 2 * sim.shake : 0
       ctx.setTransform(s, 0, 0, s, sx * s, sy * s)
-      drawTable(ctx, st, sim.shrink, sim.gimmickT)
+      drawTable(ctx, st, sim.shrink, sim.gimmickT, wld.w, wld.h)
 
       const dragPiece = sim.drag ? sim.pieces.find((q) => q.id === sim.drag!.pieceId) : null
       if (sim.teacher === 'watch') {
         const lookP = dragPiece ?? sim.pieces.find((q) => q.player === sim.turn && q.state === 'alive')
-        drawTeacher(ctx, sim.teacherT, lookP?.x ?? WORLD.w / 2, lookP?.y ?? 440)
+        drawTeacher(
+          ctx,
+          sim.teacherT,
+          lookP?.x ?? wld.w / 2,
+          lookP?.y ?? wld.h / 2,
+          st.round ? st.round.y - st.round.r : DESK.y,
+          wld.w,
+        )
       }
       const aimCap = sim.teacher === 'watch' ? TEACHER_CAP : 1
       for (const p of sim.pieces) {
@@ -1299,7 +1421,7 @@ export default function BattleScreen({
 
       if (sim.flash > 0) {
         ctx.fillStyle = `rgba(249,115,22,${sim.flash * 0.45})`
-        ctx.fillRect(-20, -20, WORLD.w + 40, WORLD.h + 40)
+        ctx.fillRect(-20, -20, wld.w + 40, wld.h + 40)
       }
     }
 
@@ -1329,43 +1451,48 @@ export default function BattleScreen({
 
   const cpuThinking = mode === '1p' && hud.turn === 1 && (hud.phase === 'aim' || hud.phase === 'sim')
   const turnColor = PLAYER_COLORS[hud.turn]
-  // 縦長キャンバス: 横幅は「画面の高さに収まる幅」と「100%」の小さい方
-  const columnWidth = `min(100%, calc((100dvh - 215px) * ${(WORLD.w / WORLD.h).toFixed(4)}))`
+  const world = stage.world ?? WORLD
+  // キャンバス: 横幅は「画面の高さに収まる幅」と「100%」の小さい方
+  const columnWidth = `min(100%, calc((100dvh - 245px) * ${(world.w / world.h).toFixed(4)}))`
 
   return (
     <div className="bg-notebook flex min-h-dvh flex-col items-center px-3 py-3 sm:px-6">
       <div className="flex w-full flex-col" style={{ maxWidth: columnWidth, minWidth: 'min(100%, 340px)' }}>
         {/* スコアヘッダー */}
-        <header className="flex w-full items-center justify-between gap-2">
-          <div className="relative">
-            <PlayerChip
-              mode={mode}
-              player={0}
-              alive={hud.alive[0]}
-              active={hud.turn === 0 && hud.phase === 'aim'}
-            />
-            <EmoteBubble msg={emotes[0]} side="left" />
-          </div>
-          <div className="text-center">
+        <header className="flex w-full flex-col gap-1.5">
+          <div className="flex items-center justify-center gap-3">
             <p className="font-display text-base leading-none sm:text-lg">
               <span aria-hidden="true">{stage.emoji}</span> ラウンド{' '}
               <span className="font-num text-xl">{hud.round}</span>
             </p>
-            <p className="mt-1 font-num text-lg font-bold leading-none tracking-widest" aria-label={`スコア ${hud.scores[0]} 対 ${hud.scores[1]}`}>
-              <span style={{ color: PLAYER_COLORS[0] }}>{'★'.repeat(hud.scores[0]) || '☆'}</span>
-              <span className="mx-1 text-ink-soft">|</span>
-              <span style={{ color: PLAYER_COLORS[1] }}>{'★'.repeat(hud.scores[1]) || '☆'}</span>
+            <p
+              className="font-num text-lg font-bold leading-none tracking-widest"
+              aria-label={`スコア ${hud.scores.join(' 対 ')}`}
+            >
+              {hud.scores.map((s, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="mx-1 text-ink-soft">|</span>}
+                  <span style={{ color: PLAYER_COLORS[i] }}>{'★'.repeat(s) || '☆'}</span>
+                </span>
+              ))}
             </p>
           </div>
-          <div className="relative">
-            <PlayerChip
-              mode={mode}
-              player={1}
-              alive={hud.alive[1]}
-              active={hud.turn === 1 && hud.phase === 'aim'}
-              sub={mode === '1p' ? CPU_LEVEL_LABEL[cpuLevel] : undefined}
-            />
-            <EmoteBubble msg={emotes[1]} side="right" />
+          <div className="flex w-full items-start justify-between gap-2">
+            {hud.alive.map((a, i) => (
+              <div key={i} className="relative">
+                <PlayerChip
+                  mode={mode}
+                  player={i as PlayerId}
+                  alive={a}
+                  active={hud.turn === i && hud.phase === 'aim'}
+                  sub={mode === '1p' && i === 1 ? CPU_LEVEL_LABEL[cpuLevel] : undefined}
+                />
+                <EmoteBubble
+                  msg={emotes[i as PlayerId]}
+                  side={i === 0 ? 'left' : i === hud.alive.length - 1 ? 'right' : 'center'}
+                />
+              </div>
+            ))}
           </div>
         </header>
 
@@ -1377,7 +1504,7 @@ export default function BattleScreen({
               role="img"
               aria-label={`ステージ「${stage.name}」のバトルの机。自分の消しゴムをドラッグして引っぱり、はなすと発射します。`}
               className="w-full"
-              style={{ aspectRatio: `${WORLD.w} / ${WORLD.h}` }}
+              style={{ aspectRatio: `${world.w} / ${world.h}` }}
             />
           </div>
 
@@ -1450,7 +1577,7 @@ export default function BattleScreen({
             <br className="sm:hidden" />
             ふちから おとされたら まけ
           </p>
-          <EmotePicker onPick={(e) => sendEmote(mode === '2p' ? hud.turn : 0, e)} />
+          <EmotePicker onPick={(e) => sendEmote(mode === '1p' ? 0 : hud.turn, e)} />
           <MuteButton />
         </div>
       </div>
@@ -1499,12 +1626,12 @@ function PlayerChip({
 }
 
 /* ---------------- エモート吹き出し ---------------- */
-function EmoteBubble({ msg, side }: { msg: EmoteMsg | null; side: 'left' | 'right' }) {
+function EmoteBubble({ msg, side }: { msg: EmoteMsg | null; side: 'left' | 'right' | 'center' }) {
   return (
     <div
       className={cx(
         'pointer-events-none absolute top-full z-20 mt-2.5',
-        side === 'left' ? 'left-1' : 'right-1',
+        side === 'left' ? 'left-1' : side === 'right' ? 'right-1' : 'left-1/2 -translate-x-1/2',
       )}
     >
       <AnimatePresence>
@@ -1522,7 +1649,7 @@ function EmoteBubble({ msg, side }: { msg: EmoteMsg | null; side: 'left' | 'righ
               aria-hidden="true"
               className={cx(
                 'absolute -top-[7px] h-3 w-3 rotate-45 border-l-[2.5px] border-t-[2.5px] border-ink bg-white',
-                side === 'left' ? 'left-5' : 'right-5',
+                side === 'left' ? 'left-5' : side === 'right' ? 'right-5' : 'left-1/2 -translate-x-1/2',
               )}
             />
             <span className="text-base" aria-hidden="true">

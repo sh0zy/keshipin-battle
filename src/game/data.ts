@@ -1,7 +1,7 @@
 // ゲームの静的データ: プレイヤー / 20種の文房具ギア / ビルド計算
 
-export type PlayerId = 0 | 1
-export type Mode = '1p' | '2p'
+export type PlayerId = 0 | 1 | 2
+export type Mode = '1p' | '2p' | '3p'
 export type CpuLevel = 'easy' | 'normal' | 'hard'
 
 export const CPU_LEVEL_LABEL: Record<CpuLevel, string> = {
@@ -10,15 +10,19 @@ export const CPU_LEVEL_LABEL: Record<CpuLevel, string> = {
   hard: 'つよい',
 }
 
+export function playerCount(mode: Mode): number {
+  return mode === '3p' ? 3 : 2
+}
+
 export const BASE_STAT = 3
 export const STAT_MAX = 8
 
-export const PLAYER_COLORS: [string, string] = ['#2563eb', '#e11d48']
-export const PLAYER_SOFT: [string, string] = ['#dbeafe', '#ffe4e6']
+export const PLAYER_COLORS: [string, string, string] = ['#2563eb', '#e11d48', '#15803d']
+export const PLAYER_SOFT: [string, string, string] = ['#dbeafe', '#ffe4e6', '#dcfce7']
 
 export function playerLabel(mode: Mode, id: PlayerId): string {
   if (mode === '1p') return id === 0 ? 'あなた' : 'CPU'
-  return id === 0 ? 'プレイヤー1' : 'プレイヤー2'
+  return `プレイヤー${id + 1}`
 }
 
 export type Special = 'crit' | 'tape' | 'protractor' | 'magnet' | 'straight' | 'sticky'

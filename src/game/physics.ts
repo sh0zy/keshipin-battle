@@ -52,34 +52,60 @@ export type SimEvent =
   | { type: 'bounce'; x: number; y: number }
 
 export interface Charges {
-  tapeUsed: [boolean, boolean] // 1試合1回
-  protUsed: [boolean, boolean] // 1ラウンド1回
+  tapeUsed: boolean[] // 1試合1回 (プレイヤーごと)
+  protUsed: boolean[] // 1ラウンド1回 (プレイヤーごと)
 }
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
 
-export function createRoundPieces(builds: [Build, Build]): Piece[] {
-  const pieces: Piece[] = []
+// 初期配置: 2人=上下の列 / 3人=下段 + 左上L字 + 右上L字 (全ステージのギミックと重ならない座標)
+function spawnSpots(count: number): [number, number][][] {
   const cx = DESK.x + DESK.w / 2
-  const offsets = [-140, 0, 140]
+  const top = DESK.y + ROW_INSET
+  const bottom = DESK.y + DESK.h - ROW_INSET
+  if (count === 3) {
+    return [
+      [[cx - 140, bottom], [cx, bottom], [cx + 140, bottom]],
+      [[150, 165], [240, 165], [150, 235]],
+      [[450, 165], [360, 165], [450, 235]],
+    ]
+  }
+  return [
+    [[cx - 140, bottom], [cx, bottom], [cx + 140, bottom]],
+    [[cx - 140, top], [cx, top], [cx + 140, top]],
+  ]
+}
+
+export function createRoundPieces(
+  builds: Build[],
+  playerCount = 2,
+  stage?: Stage,
+  seatShift = 0, // 席ローテーション: ラウンドごとに じんちを交代して公平に
+): Piece[] {
+  const pieces: Piece[] = []
+  const spots =
+    playerCount === 3 && stage?.spawn3 ? stage.spawn3 : spawnSpots(playerCount)
+  const drag = stage?.drag ?? 1
   let id = 0
-  for (const player of [0, 1] as PlayerId[]) {
-    const b = builds[player]
-    const y = player === 0 ? DESK.y + DESK.h - ROW_INSET : DESK.y + ROW_INSET
+  for (let pi = 0; pi < playerCount; pi++) {
+    const player = pi as PlayerId
+    const b = builds[pi]
+    const seat = (pi + seatShift) % playerCount
     for (let s = 0; s < 3; s++) {
+      const [sx, sy] = spots[seat][s]
       pieces.push({
         id: id++,
         player,
-        x: cx + offsets[s],
-        y,
+        x: sx,
+        y: sy,
         vx: 0,
         vy: 0,
         angle: (player === 0 ? -0.06 : 0.06) * (s - 1),
         spin: 0,
         radius: 15 + b.size * 2.6,
         mass: 0.7 + b.weight * 0.28,
-        lin: clamp(95 - b.slip * 8, 30, 200),
-        k: clamp(1.35 - b.slip * 0.12, 0.32, 2),
+        lin: clamp(95 - b.slip * 8, 30, 200) * drag,
+        k: clamp(1.35 - b.slip * 0.12, 0.32, 2) * drag,
         kbDealt: b.kbDealt,
         kbTaken: b.kbTaken,
         maxPowerMul: b.maxPower,
@@ -314,6 +340,47 @@ function holeCheck(p: Piece, stage: Stage, charges: Charges, events: SimEvent[])
 }
 
 function edgeCheck(p: Piece, charges: Charges, events: SimEvent[], stage: Stage, shrink: number) {
+  // 丸テーブル: 中心からの距離で落下判定 (サドンデスは半径が縮む)
+  if (stage.round) {
+    const R = stage.round.r - shrink
+    const dx = p.x - stage.round.x
+    const dy = p.y - stage.round.y
+    const dist = Math.hypot(dx, dy) || 0.001
+    const over = dist - R
+    if (over <= -p.radius * 0.05) return
+    const nx = dx / dist
+    const ny = dy / dist
+    const speed = Math.hypot(p.vx, p.vy)
+    // 分度器: ふちで跳ね返る (1ラウンド1回)
+    if (p.hasProt && !charges.protUsed[p.player] && speed > 40) {
+      charges.protUsed[p.player] = true
+      const vn = p.vx * nx + p.vy * ny
+      p.vx -= 1.72 * vn * nx
+      p.vy -= 1.72 * vn * ny
+      p.x = stage.round.x + nx * (R - 2)
+      p.y = stage.round.y + ny * (R - 2)
+      events.push({ type: 'bounce', x: p.x, y: p.y })
+      return
+    }
+    const fallAt = p.radius * (p.sticky ? 0.6 : 0.32)
+    // セロハンテープ: 落ちる寸前にセーフ (1試合1回)
+    if (over > p.radius * 0.18 && p.hasTape && !charges.tapeUsed[p.player]) {
+      charges.tapeUsed[p.player] = true
+      p.x = stage.round.x + nx * (R - p.radius * 0.45)
+      p.y = stage.round.y + ny * (R - p.radius * 0.45)
+      p.vx = 0
+      p.vy = 0
+      events.push({ type: 'tape', x: p.x, y: p.y, player: p.player })
+      return
+    }
+    if (over > fallAt) {
+      p.state = 'falling'
+      p.fallT = 0
+      events.push({ type: 'fall', x: p.x, y: p.y, player: p.player })
+    }
+    return
+  }
+
   // サドンデス: 開いているふちだけ落下ラインが内側にせまる
   const bx0 = DESK.x + (stage.openEdges.left ? shrink : 0)
   const bx1 = DESK.x + DESK.w - (stage.openEdges.right ? shrink : 0)

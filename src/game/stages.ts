@@ -47,6 +47,14 @@ export interface Stage {
   holes: Hole[]
   spinner?: Spinner
   tilt?: Tilt
+  /** 丸テーブル (指定すると机が円形になる) */
+  round?: { x: number; y: number; r: number }
+  /** ステージ独自のワールドサイズ (省略時は 600x880) */
+  world?: { w: number; h: number }
+  /** 摩擦補正 (1より大きいと止まりやすい。初撃キル防止用) */
+  drag?: number
+  /** 3人せんよう配置 (プレイヤーごとの3駒スポット) */
+  spawn3?: [number, number][][]
 }
 
 const cx = DESK.x + DESK.w / 2
@@ -161,5 +169,118 @@ export const STAGES: Stage[] = [
       { x: cx + 10, y: cy + 40, w: 150, h: 64, kind: 'case' },
     ],
     holes: [{ x: cx - 90, y: cy - 120, r: 34 }],
+  },
+]
+
+/* ================================================================
+   3人せんようステージ: 大きな丸テーブル (120°の完全対称でだれも不利にならない)
+   - スポーンは全員「中心から220px・120°間隔」で完全同条件
+   - 半径380の大型テーブル: フルパワーの初撃でも たおしきれない距離設計
+   ================================================================ */
+const RC = { x: 435, y: 460 } // 丸テーブルの中心
+const R_TABLE = 400
+const RWORLD = { w: 870, h: 880 } // 丸テーブル用の広いワールド
+
+// リング状スポーン: 半径 ring の円周上、120°間隔の3クラスタ (中央 ± spread度)
+function ringSpawns(ring: number, spreadDeg: number): [number, number][][] {
+  const seats = [90, 210, 330] // 下 / 左上 / 右上
+  return seats.map((base) =>
+    [-spreadDeg, 0, spreadDeg].map((off) => {
+      const a = ((base + off) * Math.PI) / 180
+      return [
+        Math.round(RC.x + Math.cos(a) * ring),
+        Math.round(RC.y + Math.sin(a) * ring),
+      ] as [number, number]
+    }),
+  )
+}
+
+const RING_SPAWN = ringSpawns(230, 17)
+const roundBase = {
+  openEdges: allOpen,
+  round: { ...RC, r: R_TABLE },
+  world: RWORLD,
+  spawn3: RING_SPAWN,
+  drag: 1.25, // 大きな机は少し止まりやすく → 初撃で倒しきれない
+}
+
+export const STAGES_3P: Stage[] = [
+  {
+    id: 't-round',
+    name: 'まるいつくえ',
+    emoji: '🟤',
+    desc: 'おおきな まんまるテーブルで 3人が完全にたいとう!じっくり真剣勝負。',
+    walls: [],
+    holes: [],
+    ...roundBase,
+  },
+  {
+    id: 't-cheese',
+    name: 'チーズのテーブル',
+    emoji: '🧀',
+    desc: 'あちこちに あながあいた チーズみたいな机。うっかりふむな!',
+    walls: [],
+    holes: [
+      { x: RC.x, y: RC.y, r: 50 },
+      { x: 548, y: 525, r: 34 },
+      { x: 322, y: 525, r: 34 },
+      { x: 435, y: 330, r: 34 },
+    ],
+    ...roundBase,
+  },
+  {
+    id: 't-holes',
+    name: 'みつあなリング',
+    emoji: '🕳️',
+    desc: 'じんちのあいだに 3つのおとしあな。せめる道をえらべ!',
+    walls: [],
+    holes: [
+      { x: 574, y: 540, r: 36 },
+      { x: 296, y: 540, r: 36 },
+      { x: 435, y: 300, r: 36 },
+    ],
+    ...roundBase,
+  },
+  {
+    id: 't-donut',
+    name: 'ドーナツテーブル',
+    emoji: '🍩',
+    desc: 'まんなかは 巨大なおとしあな。せまいふちの とりあいだ!',
+    walls: [],
+    holes: [{ x: RC.x, y: RC.y, r: 120 }],
+    ...roundBase,
+  },
+  {
+    id: 't-forts',
+    name: 'まるい砦',
+    emoji: '🏰',
+    desc: 'それぞれの じんちのまえに ふでばこの盾。こもるか、せめるか。',
+    walls: [
+      { x: 355, y: 571, w: 160, h: 56, kind: 'case' },
+      { x: 284, y: 330, w: 56, h: 130, kind: 'case' },
+      { x: 530, y: 330, w: 56, h: 130, kind: 'case' },
+    ],
+    holes: [],
+    ...roundBase,
+  },
+  {
+    id: 't-compass',
+    name: 'まわる見はり',
+    emoji: '🌀',
+    desc: 'まんなかで コンパスがかいてん。だれにでも びょうどうに きびしい!',
+    walls: [],
+    holes: [],
+    spinner: { x: RC.x, y: RC.y, length: 150, radius: 11, speed: 1.3 },
+    ...roundBase,
+  },
+  {
+    id: 't-whirl',
+    name: 'うずまきテーブル',
+    emoji: '🌊',
+    desc: 'ながれが うずをまき、まんなかには インクのあな。ながされるな!',
+    walls: [],
+    holes: [{ x: RC.x, y: RC.y, r: 45 }],
+    tilt: { accel: 65, period: 14 },
+    ...roundBase,
   },
 ]

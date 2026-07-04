@@ -17,7 +17,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('1p')
   const [cpuLevel, setCpuLevel] = useState<CpuLevel>('normal')
   const [stage, setStage] = useState<Stage>(STAGES[0])
-  const [loadouts, setLoadouts] = useState<[string[], string[]]>([[], []])
+  const [loadouts, setLoadouts] = useState<string[][]>([[], [], []])
   const [result, setResult] = useState<MatchResult | null>(null)
   const [battleKey, setBattleKey] = useState(0)
 
@@ -59,6 +59,7 @@ export default function App() {
           )}
           {screen === 'stage' && (
             <StageScreen
+              mode={mode}
               onBack={() => setScreen('title')}
               onSelect={(s) => {
                 setStage(s)
@@ -85,7 +86,7 @@ export default function App() {
               stage={stage}
               loadouts={loadouts}
               onExit={() => setScreen('title')}
-              onFinish={(winner: PlayerId, score: [number, number]) => {
+              onFinish={(winner: PlayerId, score: number[]) => {
                 setResult({ winner, score, loadouts })
                 setScreen('result')
               }}

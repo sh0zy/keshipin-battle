@@ -1,16 +1,20 @@
 // ステージ選択画面: ミニプレビュー付きカード
 import { motion } from 'framer-motion'
+import { PLAYER_COLORS, type Mode } from '../game/data'
 import { DESK } from '../game/physics'
-import { STAGES, type Stage } from '../game/stages'
+import { STAGES, STAGES_3P, type Stage } from '../game/stages'
 import { SketchButton, Tape } from '../components/ui'
 
 export default function StageScreen({
+  mode,
   onSelect,
   onBack,
 }: {
+  mode: Mode
   onSelect: (s: Stage) => void
   onBack: () => void
 }) {
+  const list = mode === '3p' ? STAGES_3P : STAGES
   return (
     <div className="bg-notebook flex min-h-dvh flex-col items-center px-4 pb-10 pt-5">
       <header className="flex w-full max-w-3xl items-center justify-between gap-3">
@@ -18,13 +22,15 @@ export default function StageScreen({
           ← もどる
         </SketchButton>
         <h1 className="font-display text-2xl sm:text-3xl">
-          <span className="marker-swipe">ステージをえらぼう</span>
+          <span className="marker-swipe">
+            {mode === '3p' ? '3人ステージをえらぼう' : 'ステージをえらぼう'}
+          </span>
         </h1>
         <span className="w-24" aria-hidden="true" />
       </header>
 
       <ul className="mt-6 grid w-full max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
-        {STAGES.map((s, i) => (
+        {list.map((s, i) => (
           <motion.li
             key={s.id}
             initial={{ opacity: 0, y: 18 }}
@@ -62,7 +68,9 @@ export default function StageScreen({
       </ul>
 
       <p className="mt-8 text-sm font-medium text-ink-soft">
-        🗺️ ステージによって かちかたが かわるぞ!
+        {mode === '3p'
+          ? '⚖️ ラウンドごとに じんちが こうたいするから みんな公平!'
+          : '🗺️ ステージによって かちかたが かわるぞ!'}
       </p>
     </div>
   )
@@ -74,13 +82,30 @@ function StagePreview({ stage }: { stage: Stage }) {
   const PY = 10
   const PW = 76
   const PH = 128
-  const mx = (x: number) => PX + ((x - DESK.x) / DESK.w) * PW
-  const my = (y: number) => PY + ((y - DESK.y) / DESK.h) * PH
-  const mw = (w: number) => (w / DESK.w) * PW
-  const mh = (h: number) => (h / DESK.h) * PH
+  const rnd = stage.round
+  // 丸テーブルは等倍スケールで中央配置、長方形は机をボックスにフィット
+  const k = rnd ? PW / (rnd.r * 2 + 24) : 1
+  const cxP = PX + PW / 2
+  const cyP = PY + PH / 2
+  const mx = (x: number) => (rnd ? cxP + (x - rnd.x) * k : PX + ((x - DESK.x) / DESK.w) * PW)
+  const my = (y: number) => (rnd ? cyP + (y - rnd.y) * k : PY + ((y - DESK.y) / DESK.h) * PH)
+  const mw = (w: number) => (rnd ? w * k : (w / DESK.w) * PW)
+  const mh = (h: number) => (rnd ? h * k : (h / DESK.h) * PH)
   return (
     <svg viewBox="0 0 96 148" className="w-20 shrink-0" aria-hidden="true">
-      <rect x={PX - 4} y={PY - 4} width={PW + 8} height={PH + 8} rx="7" fill="#d9a05b" stroke="#7c4a21" strokeWidth="3" />
+      {stage.round ? (
+        <ellipse
+          cx={mx(stage.round.x)}
+          cy={my(stage.round.y)}
+          rx={mw(stage.round.r) + 4}
+          ry={mh(stage.round.r) + 4}
+          fill="#d9a05b"
+          stroke="#7c4a21"
+          strokeWidth="3"
+        />
+      ) : (
+        <rect x={PX - 4} y={PY - 4} width={PW + 8} height={PH + 8} rx="7" fill="#d9a05b" stroke="#7c4a21" strokeWidth="3" />
+      )}
       {stage.walls.map((w, i) => (
         <rect
           key={i}
@@ -127,12 +152,26 @@ function StagePreview({ stage }: { stage: Stage }) {
           />
         </g>
       )}
-      {[-140, 0, 140].map((o) => (
-        <g key={o}>
-          <circle cx={mx(DESK.x + DESK.w / 2 + o)} cy={my(DESK.y + 66)} r="4.5" fill="#e11d48" stroke="#422006" strokeWidth="1.2" />
-          <circle cx={mx(DESK.x + DESK.w / 2 + o)} cy={my(DESK.y + DESK.h - 66)} r="4.5" fill="#2563eb" stroke="#422006" strokeWidth="1.2" />
-        </g>
-      ))}
+      {stage.spawn3
+        ? stage.spawn3.map((cluster, pi) =>
+            cluster.map(([x, y], si) => (
+              <circle
+                key={`${pi}-${si}`}
+                cx={mx(x)}
+                cy={my(y)}
+                r="4.5"
+                fill={PLAYER_COLORS[pi]}
+                stroke="#422006"
+                strokeWidth="1.2"
+              />
+            )),
+          )
+        : [-140, 0, 140].map((o) => (
+            <g key={o}>
+              <circle cx={mx(DESK.x + DESK.w / 2 + o)} cy={my(DESK.y + 66)} r="4.5" fill="#e11d48" stroke="#422006" strokeWidth="1.2" />
+              <circle cx={mx(DESK.x + DESK.w / 2 + o)} cy={my(DESK.y + DESK.h - 66)} r="4.5" fill="#2563eb" stroke="#422006" strokeWidth="1.2" />
+            </g>
+          ))}
     </svg>
   )
 }
